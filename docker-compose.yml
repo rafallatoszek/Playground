@@ -1,0 +1,95 @@
+version: '3.4'
+
+networks:
+  my-network:
+
+services:
+  playground-main:
+    image: playground-main
+    build:
+      context: .
+      dockerfile: Main/Dockerfile
+    ports:
+      - 5010:8080
+    networks:
+      - my-network
+
+  playground-consumer:
+    image: playground-consumer
+    build:
+      context: .
+      dockerfile: Consumer/Dockerfile
+    ports:
+      - 5020:8080
+    networks:
+      - my-network
+
+  playground-api:
+    image: playground-api
+    build:
+      context: .
+      dockerfile: Api/Dockerfile
+    ports:
+      - 5030:8080
+    networks:
+      - my-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 2181:2181
+    volumes:
+      - ./.data/zookeeper_data:/var/lib/zookeeper/data
+      - ./.data/zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - my-network
+  
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 19092:19092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,CONNECTIONS_FROM_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONNECTIONS_FROM_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - ./.data/kafka_data:/var/lib/kafka/data
+    networks:
+      - my-network
+
+  kowl:
+    image: quay.io/cloudhut/kowl:latest
+    depends_on:
+      - kafka
+    restart: on-failure
+    ports:
+      - 8080:8080
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+    networks:
+      - my-network
+
+  prometheus:
+    image: prom/prometheus
+    restart: always
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - my-network
+
+  grafana: 
+    image: grafana/grafana
+    restart: always
+    ports:
+      - 3000:3000
+    networks:
+      - my-network
